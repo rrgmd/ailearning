@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Logistic Regression Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f3f4f6; /* Tailwind gray-100 */
+            color: #1f2937; /* Tailwind gray-800 */
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 0.75rem; /* Tailwind rounded-xl */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* Tailwind shadow-lg */
+            width: 100%;
+            max-width: 900px;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            margin-bottom: 1.5rem; /* Tailwind mb-6 */
+        }
+        svg {
+            display: block;
+            margin: auto;
+            overflow: visible; /* To ensure tooltips and labels are not cut off */
+        }
+        .axis-label {
+            font-size: 0.875rem; /* Tailwind text-sm */
+            fill: #4b5563; /* Tailwind gray-600 */
+        }
+        .data-point-0 {
+            fill: #ef4444; /* Tailwind red-500 */
+            opacity: 0.7;
+        }
+        .data-point-1 {
+            fill: #22c55e; /* Tailwind green-500 */
+            opacity: 0.7;
+        }
+        .logistic-curve {
+            fill: none;
+            stroke: #3b82f6; /* Tailwind blue-500 */
+            stroke-width: 2.5px;
+        }
+        .decision-threshold-line { /* Renamed for clarity */
+            stroke: #f97316; /* Tailwind orange-500 */
+            stroke-width: 1.5px;
+            stroke-dasharray: 4,4;
+        }
+        .interactive-dot {
+            fill: #8b5cf6; /* Tailwind violet-500 */
+            stroke: white;
+            stroke-width: 2px;
+        }
+        .guide-line {
+            stroke: #8b5cf6; /* Tailwind violet-500 */
+            stroke-width: 1px;
+            stroke-dasharray: 2,2;
+        }
+        .tooltip {
+            position: absolute;
+            background-color: rgba(0,0,0,0.75);
+            color: white;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.375rem; /* Tailwind rounded-md */
+            font-size: 0.875rem; /* Tailwind text-sm */
+            pointer-events: none; /* So it doesn't interfere with mouse events on SVG */
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.25rem; /* Increased gap slightly */
+            margin-bottom: 1.5rem;
+        }
+        .control-group { /* Group label and inputs */
+            display: flex;
+            flex-direction: column; /* Stack label on top of input row */
+            align-items: center;
+            gap: 0.25rem;
+        }
+        .input-row { /* For slider and number input side-by-side */
+             display: flex;
+             align-items: center;
+             gap: 0.5rem;
+        }
+        .controls label {
+            font-weight: 600; /* Tailwind font-semibold */
+            margin-bottom: 0.25rem; /* Space between label and inputs */
+        }
+        .controls input[type="range"] {
+            width: 180px; /* Adjusted width */
+            cursor: pointer;
+        }
+        .controls input[type="number"] {
+            width: 70px; /* Adjusted width */
+            padding: 0.5rem;
+            border: 1px solid #d1d5db; /* Tailwind gray-300 */
+            border-radius: 0.375rem; /* Tailwind rounded-md */
+            text-align: center;
+        }
+        .explanation-box {
+            background-color: #eef2ff; /* Tailwind indigo-50 */
+            padding: 1rem;
+            border-radius: 0.5rem; /* Tailwind rounded-lg */
+            border: 1px solid #c7d2fe; /* Tailwind indigo-200 */
+        }
+        .explanation-box h3 {
+            color: #4338ca; /* Tailwind indigo-700 */
+            font-weight: 600;
+            margin-top:0;
+        }
+        .explanation-box p, .explanation-box li {
+            font-size: 0.875rem; /* Tailwind text-sm */
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-2xl font-bold text-center mb-6 text-gray-700">Interactive Logistic Regression Explorer</h1>
+
+        <div class="chart-container">
+            <svg id="logisticChart"></svg>
+            <div id="tooltip" class="tooltip"></div>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="studyHoursSlider">Study Hours:</label>
+                <div class="input-row">
+                    <input type="range" id="studyHoursSlider" min="0" max="20" step="0.1" value="10" class="align-middle">
+                    <input type="number" id="studyHoursInput" min="0" max="20" step="0.1" value="10" class="ml-1 align-middle">
+                </div>
+            </div>
+            <div class="control-group">
+                <label for="thresholdSlider">Decision Threshold:</label>
+                <div class="input-row">
+                    <input type="range" id="thresholdSlider" min="0.01" max="0.99" step="0.01" value="0.5" class="align-middle">
+                    <input type="number" id="thresholdInput" min="0.01" max="0.99" step="0.01" value="0.5" class="ml-1 align-middle">
+                </div>
+            </div>
+            <p class="text-lg mt-2">Predicted Probability of Passing: <strong id="predictedProbability" class="text-blue-600">0.00</strong></p>
+            <p class="text-lg">Classification: <strong id="classificationResult" class="text-gray-700"></strong></p>
+        </div>
+
+        <div class="explanation-box">
+            <h3 class="text-lg font-semibold mb-2">Understanding the Graph</h3>
+            <p>This graph visualizes a logistic regression model, which predicts the probability of a binary outcome (e.g., Pass/Fail) based on a predictor variable (e.g., Study Hours).</p>
+            <ul class="list-disc list-inside mt-2 space-y-1">
+                <li><strong>X-axis (Study Hours):</strong> Represents the input variable.</li>
+                <li><strong>Y-axis (Probability of Passing):</strong> Ranges from 0 (0%) to 1 (100%).</li>
+                <li><strong>Blue S-shaped Curve (Logistic Curve):</strong> This is the model itself, learned from data. It maps study hours to the probability of passing. Its shape is determined by coefficients (not changed by the threshold).</li>
+                <li><strong>Green (Pass=1) & Red (Fail=0) Dots:</strong> Hypothetical data points.</li>
+                <li><strong>Orange Dashed Line (Decision Threshold):</strong> This is a cutoff *you apply* to the probabilities from the blue curve. If the predicted probability is above this line, the model classifies as "Pass" (1); otherwise, "Fail" (0). You can now adjust this threshold using the slider above.</li>
+                <li><strong>Purple Dot & Lines:</strong> Shows the predicted probability for the selected "Study Hours".</li>
+            </ul>
+            <p class="mt-3"><strong>How to Interact:</strong></p>
+            <ul class="list-disc list-inside mt-1 space-y-1">
+                <li>Adjust the "Study Hours" slider to see how probability changes.</li>
+                <li>Adjust the "Decision Threshold" slider. Notice how the orange line moves and the "Classification" changes, even if the "Predicted Probability" (from the blue curve) stays the same.</li>
+            </ul>
+            <p class="mt-3"><strong>Important Note on Thresholds:</strong> In a real project, the logistic regression model is trained first to produce probabilities (the blue curve). Then, the decision threshold (orange line) is chosen separately based on the project's goals and the costs of different errors (e.g., is it worse to wrongly predict 'Pass' or wrongly predict 'Fail'?). The threshold is not part of the model's training process.</p>
+        </div>
+    </div>
+
+    <script>
+        // --- Configuration (Model Parameters) ---
+        const b0 = -4; // Intercept: shifts the curve left/right
+        const b1 = 0.8; // Coefficient for studyHours: controls steepness
+        // Decision threshold is now dynamic, read from slider
+
+        // --- D3 Setup ---
+        const margin = {top: 40, right: 60, bottom: 60, left: 60}; // Increased right margin for threshold label
+        const svgWidth = 800;
+        const svgHeight = 500;
+        const width = svgWidth - margin.left - margin.right;
+        const height = svgHeight - margin.top - margin.bottom;
+
+        const svg = d3.select("#logisticChart")
+            .attr("width", svgWidth)
+            .attr("height", svgHeight)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        const tooltip = d3.select("#tooltip");
+
+        // --- Scales ---
+        const xScale = d3.scaleLinear().range([0, width]);
+        const yScale = d3.scaleLinear().domain([0, 1]).range([height, 0]);
+
+        // --- Axes ---
+        const xAxisFormat = d3.axisBottom(xScale).ticks(10); // Renamed for clarity
+        const yAxisFormat = d3.axisLeft(yScale).ticks(5).tickFormat(d3.format(".1f")); // Renamed
+
+        svg.append("g")
+            .attr("class", "x-axis")
+            .attr("transform", `translate(0,${height})`);
+
+        svg.append("g")
+            .attr("class", "y-axis");
+
+        svg.append("text")
+            .attr("class", "axis-label")
+            .attr("text-anchor", "middle")
+            .attr("x", width / 2)
+            .attr("y", height + margin.bottom - 15)
+            .text("Study Hours (Predictor Variable)");
+
+        svg.append("text")
+            .attr("class", "axis-label")
+            .attr("text-anchor", "middle")
+            .attr("transform", "rotate(-90)")
+            .attr("x", -height / 2)
+            .attr("y", -margin.left + 20)
+            .text("Probability of Passing");
+
+        // --- Logistic Function ---
+        function logisticFunction(x_val) { // Renamed parameter for clarity
+            return 1 / (1 + Math.exp(-(b0 + b1 * x_val)));
+        }
+
+        // --- Data Generation ---
+        let sampleData = [];
+        const numPoints = 60;
+        const xMaxData = 20;
+        for (let i = 0; i < numPoints; i++) {
+            const xVal = Math.random() * xMaxData;
+            const prob = logisticFunction(xVal);
+            const outcome = Math.random() < prob ? 1 : 0;
+            sampleData.push({ x: xVal, y_actual: outcome, prob_predicted: prob });
+        }
+        
+        const xDomainMax = Math.max(xMaxData, parseFloat(d3.select("#studyHoursSlider").attr("max")));
+        xScale.domain([0, xDomainMax]);
+
+        // --- DOM Element References ---
+        const studyHoursSlider = d3.select("#studyHoursSlider");
+        const studyHoursInput = d3.select("#studyHoursInput");
+        const thresholdSlider = d3.select("#thresholdSlider");
+        const thresholdInput = d3.select("#thresholdInput");
+        const probabilityText = d3.select("#predictedProbability");
+        const classificationText = d3.select("#classificationResult");
+
+        const interactiveDot = svg.append("circle").attr("class", "interactive-dot").attr("r", 7);
+        const horizontalLine = svg.append("line").attr("class", "guide-line guide-line-h");
+        const verticalLine = svg.append("line").attr("class", "guide-line guide-line-v");
+        
+        // --- Drawing Function ---
+        function drawGraph() {
+            const currentThreshold = +thresholdSlider.property("value"); // Get current threshold
+
+            svg.select(".x-axis").call(xAxisFormat);
+            svg.select(".y-axis").call(yAxisFormat);
+
+            svg.selectAll(".data-point").remove();
+            svg.selectAll(".data-point")
+                .data(sampleData)
+                .enter().append("circle")
+                .attr("class", d => `data-point data-point-${d.y_actual}`)
+                .attr("cx", d => xScale(d.x))
+                .attr("cy", d => yScale(d.y_actual + (Math.random() - 0.5) * 0.08)) 
+                .attr("r", 5)
+                .on("mouseover", function(event, d) {
+                    tooltip.style("opacity", 1)
+                           .html(`Hours: ${d.x.toFixed(1)}<br>Actual: ${d.y_actual === 1 ? 'Pass' : 'Fail'}<br>Model P(Pass): ${d.prob_predicted.toFixed(2)}`)
+                           .style("left", (event.pageX + 10) + "px")
+                           .style("top", (event.pageY - 28) + "px");
+                    d3.select(this).attr("r", 7);
+                })
+                .on("mouseout", function() {
+                    tooltip.style("opacity", 0);
+                    d3.select(this).attr("r", 5);
+                });
+
+            const lineData = d3.range(xScale.domain()[0], xScale.domain()[1] + 0.1, 0.1).map(x_val => ({
+                x: x_val,
+                y: logisticFunction(x_val)
+            }));
+            svg.selectAll(".logistic-curve").remove();
+            svg.append("path")
+                .datum(lineData)
+                .attr("class", "logistic-curve")
+                .attr("d", d3.line().x(d => xScale(d.x)).y(d => yScale(d.y)).curve(d3.curveBasis));
+
+            // Draw Decision Threshold Line
+            svg.selectAll(".decision-threshold-line").remove(); // Use new class name
+            svg.append("line")
+                .attr("class", "decision-threshold-line") // Use new class name
+                .attr("x1", xScale(xScale.domain()[0]))
+                .attr("y1", yScale(currentThreshold))
+                .attr("x2", xScale(xScale.domain()[1]))
+                .attr("y2", yScale(currentThreshold));
+            
+            svg.selectAll(".threshold-label").remove();
+            svg.append("text")
+                .attr("class", "threshold-label axis-label")
+                .attr("x", xScale(xScale.domain()[1]) + 5) 
+                .attr("y", yScale(currentThreshold) + 4) 
+                .attr("text-anchor", "start")
+                .style("fill", "#f97316") 
+                .text(`Threshold: ${currentThreshold.toFixed(2)}`); // Display with 2 decimal places
+        }
+
+        // --- Interactivity Update Function ---
+        function updateInteractiveElements() {
+            const hours = +studyHoursSlider.property("value");
+            const currentThreshold = +thresholdSlider.property("value");
+            const prob = logisticFunction(hours);
+
+            probabilityText.text(prob.toFixed(3));
+
+            const classification = prob >= currentThreshold ? "Pass (1)" : "Fail (0)";
+            classificationText.text(classification)
+                .style("color", prob >= currentThreshold ? "#16a34a" : "#dc2626");
+
+            const cx = xScale(hours);
+            const cy = yScale(prob);
+
+            interactiveDot.attr("cx", cx).attr("cy", cy);
+            horizontalLine.attr("x1", cx).attr("y1", cy).attr("x2", xScale(xScale.domain()[0])).attr("y2", cy);
+            verticalLine.attr("x1", cx).attr("y1", cy).attr("x2", cx).attr("y2", yScale(0));
+        }
+
+        // --- Event Listeners ---
+        studyHoursSlider.on("input", function() {
+            const hours = +this.value;
+            studyHoursInput.property("value", hours.toFixed(1));
+            updateInteractiveElements();
+        });
+        
+        studyHoursInput.on("input", function() {
+            let hours = +this.value;
+            const minHours = +studyHoursSlider.attr("min");
+            const maxHours = +studyHoursSlider.attr("max");
+            if (hours < minHours) hours = minHours;
+            if (hours > maxHours) hours = maxHours;
+            this.value = hours.toFixed(1);
+            studyHoursSlider.property("value", hours);
+            updateInteractiveElements();
+        });
+
+        thresholdSlider.on("input", function() {
+            const thresholdVal = +this.value;
+            thresholdInput.property("value", thresholdVal.toFixed(2));
+            drawGraph(); // Redraw graph for threshold line and label
+            updateInteractiveElements(); // Update classification based on new threshold
+        });
+
+        thresholdInput.on("input", function() {
+            let thresholdVal = +this.value;
+            const minThresh = +thresholdSlider.attr("min");
+            const maxThresh = +thresholdSlider.attr("max");
+            if (thresholdVal < minThresh) thresholdVal = minThresh;
+            if (thresholdVal > maxThresh) thresholdVal = maxThresh;
+            this.value = thresholdVal.toFixed(2);
+            thresholdSlider.property("value", thresholdVal);
+            drawGraph(); // Redraw graph for threshold line and label
+            updateInteractiveElements(); // Update classification based on new threshold
+        });
+
+        // --- Initial Draw & Update ---
+        drawGraph();
+        updateInteractiveElements();
+
+    </script>
+</body>
+</html>
